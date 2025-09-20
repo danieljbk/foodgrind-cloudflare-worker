@@ -5,7 +5,8 @@ This API, hosted on Cloudflare Workers, provides endpoints for generating images
 ## Features
 
 -   **Image Generation**: Generate images from text prompts using Amazon Titan Image Generator V2.
--   **Text Generation**: Generate text from prompts using OpenAI GPT-OSS 120B.
+-   **Text Generation (GPT)**: Generate text from prompts using OpenAI GPT-OSS 120B.
+-   **Text Generation (Claude)**: Generate text from prompts using Anthropic Claude 3.5 Sonnet.
 -   **Caching**: Caches generated images in Cloudflare R2 and text in Cloudflare KV to reduce latency and cost on subsequent requests with the same prompt.
 
 ## Technology Stack
@@ -13,7 +14,8 @@ This API, hosted on Cloudflare Workers, provides endpoints for generating images
 -   **Runtime**: Cloudflare Workers
 -   **AI Models**:
     -   Image: Amazon Titan Image Generator V2 (via AWS Bedrock)
-    -   Text: OpenAI GPT-OSS 120B (via AWS Bedrock)
+    -   Text (GPT): OpenAI GPT-OSS 120B (via AWS Bedrock)
+    -   Text (Claude): Anthropic Claude 3.5 Sonnet (via AWS Bedrock)
 -   **Storage**:
     -   Image Cache: Cloudflare R2
     -   Text Cache: Cloudflare KV
@@ -40,16 +42,34 @@ This API, hosted on Cloudflare Workers, provides endpoints for generating images
     -   **Code**: `400 Bad Request` if no prompt is provided.
     -   **Code**: `500 Internal Server Error` for any other errors.
 
-### Text Generation
+### Text Generation (GPT)
 
 -   **Method**: `GET`
--   **Endpoint**: `/text/{prompt}`
--   **Description**: Generates text based on the provided `{prompt}`. The first request for a given prompt will generate new text and cache it in KV. Subsequent requests for the same prompt will return the cached text.
+-   **Endpoint**: `/gpt/{prompt}`
+-   **Description**: Generates text based on the provided `{prompt}` using OpenAI GPT-OSS 120B. The first request for a given prompt will generate new text and cache it in KV. Subsequent requests for the same prompt will return the cached text.
 -   **URL Parameters**:
     -   `prompt` (required): The text prompt to use for text generation.
 -   **Example Usage (cURL)**:
     ```bash
-    curl -X GET "https://your-worker-url.workers.dev/text/write%20a%20short%20story%20about%20a%20robot"
+    curl -X GET "https://your-worker-url.workers.dev/gpt/write%20a%20short%20story%20about%20a%20robot"
+    ```
+-   **Success Response**:
+    -   **Code**: `200 OK`
+    -   **Content**: The generated text in plain text format.
+-   **Error Response**:
+    -   **Code**: `400 Bad Request` if no prompt is provided.
+    -   **Code**: `500 Internal Server Error` for any other errors.
+
+### Text Generation (Claude)
+
+-   **Method**: `GET`
+-   **Endpoint**: `/claude/{prompt}`
+-   **Description**: Generates text based on the provided `{prompt}` using Anthropic Claude 3.5 Sonnet. The first request for a given prompt will generate new text and cache it in KV. Subsequent requests for the same prompt will return the cached text.
+-   **URL Parameters**:
+    -   `prompt` (required): The text prompt to use for text generation.
+-   **Example Usage (cURL)**:
+    ```bash
+    curl -X GET "https://your-worker-url.workers.dev/claude/write%20a%20short%20story%20about%20a%20robot"
     ```
 -   **Success Response**:
     -   **Code**: `200 OK`

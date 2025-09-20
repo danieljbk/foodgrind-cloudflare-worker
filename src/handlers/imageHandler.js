@@ -78,16 +78,16 @@ export async function handleImageGeneration(key, env) {
  * @returns {Promise<ArrayBuffer>}
  */
 async function generateImageWithAWS(key, env) {
-  return callWithBackoff(async () => {
-    // Create a signed request for AWS Bedrock
-    const aws = new AwsClient({
-      accessKeyId: env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-      region: env.AWS_REGION,
-      service: "bedrock",
-    });
+  // Create a new AWS client for each request to avoid state-related signing issues.
+  const aws = new AwsClient({
+    accessKeyId: env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+    region: env.AWS_REGION,
+    service: "bedrock",
+  });
 
-    const modelId = "amazon.titan-image-generator-v2:0";
+  return callWithBackoff(async () => {
+    const modelId = "amazon.titan-image-generator-v1:0";
     const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
 
     const requestBody = JSON.stringify({

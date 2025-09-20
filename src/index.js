@@ -2,6 +2,7 @@
 
 import { handleImageGeneration } from "./handlers/imageHandler.js";
 import { handleTextGeneration } from "./handlers/textHandler.js";
+import { handleClaudeTextGeneration } from "./handlers/claudeHandler.js";
 
 export default {
   /**
@@ -18,13 +19,18 @@ export default {
       return handleImageGeneration(key, env);
     }
 
-    if (path.startsWith("text/")) {
-      const key = path.substring("text/".length);
+    if (path.startsWith("gpt/")) {
+      const key = path.substring("gpt/".length);
       return handleTextGeneration(key, env);
     }
 
+    if (path.startsWith("claude/")) {
+      const key = path.substring("claude/".length);
+      return handleClaudeTextGeneration(key, env);
+    }
+
     return new Response(
-      "Invalid request. Use /image/{prompt} or /text/{prompt}.",
+      "Invalid request. Use /image/{prompt}, /gpt/{prompt}, or /claude/{prompt}.",
       {
         status: 400,
       },

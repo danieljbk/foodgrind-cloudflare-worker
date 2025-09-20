@@ -1,21 +1,18 @@
-// src/handlers/textHandler.js
+// src/handlers/claudeHandler.js
 
 import { AwsClient } from "aws4fetch";
 import { callWithBackoff } from "../utils/awsRetry.js";
 
 // Map to track pending requests to prevent duplicate AWS calls
-const pendingTextRequests = new Map();
+const pendingClaudeRequests = new Map();
 
 /**
- * Handles text generation requests using OpenAI GPT-OSS 120B.
- * Note: This handler is specifically designed for GPT requests.
- * For Claude requests, see claudeHandler.js
- * This handler is activated via the /gpt/ endpoint.
+ * Handles text generation requests using Anthropic Claude 3.
  * @param {string} key The prompt for text generation.
  * @param {object} env Environment variables.
  * @returns {Promise<Response>}
  */
-export async function handleTextGeneration(key, env) {
+export async function handleClaudeTextGeneration(key, env) {
   if (!key) {
     return new Response("Please provide a text prompt for text generation.", {
       status: 400,
@@ -33,21 +30,21 @@ export async function handleTextGeneration(key, env) {
     }
 
     // 2. Check if there's already a pending request for this key
-    if (pendingTextRequests.has(key)) {
+    if (pendingClaudeRequests.has(key)) {
       console.log(`Deduplicating request for text key: "${key}"`);
-      const generatedText = await pendingTextRequests.get(key);
+      const generatedText = await pendingClaudeRequests.get(key);
       return new Response(generatedText, {
         headers: { "Content-Type": "text/plain" },
       });
     }
 
     console.log(
-      `Cache MISS for text key: "${key}". Generating with AWS Bedrock (GPT).`,
+      `Cache MISS for text key: "${key}". Generating with AWS Bedrock (Claude).`,
     );
 
     // 3. Create a promise for the AWS call and store it
-    const textPromise = generateTextWithGPT(key, env);
-    pendingTextRequests.set(key, textPromise);
+    const textPromise = generateTextWithClaude(key, env);
+    pendingClaudeRequests.set(key, textPromise);
 
     try {
       const generatedText = await textPromise;
@@ -63,7 +60,7 @@ export async function handleTextGeneration(key, env) {
       });
     } finally {
       // Remove the pending request
-      pendingTextRequests.delete(key);
+      pendingClaudeRequests.delete(key);
     }
   } catch (error) {
     console.error("Worker Error (Text Generation):", error);
@@ -72,14 +69,12 @@ export async function handleTextGeneration(key, env) {
 }
 
 /**
- * Generate text with AWS Bedrock using OpenAI GPT
- * Note: This function is specifically designed for GPT requests.
- * For Claude requests, see claudeHandler.js
+ * Generate text with AWS Bedrock using Anthropic Claude
  * @param {string} key The prompt for text generation.
  * @param {object} env Environment variables.
  * @returns {Promise<string>}
  */
-async function generateTextWithGPT(key, env) {
+async function generateTextWithClaude(key, env) {
   // Create a new AWS client for each request to avoid state-related signing issues.
   const aws = new AwsClient({
     accessKeyId: env.AWS_ACCESS_KEY_ID,
@@ -89,14 +84,18 @@ async function generateTextWithGPT(key, env) {
   });
 
   return callWithBackoff(async () => {
-    // Ensure you are using the correct model ID
-    const modelId = "openai.gpt-oss-120b-1:0";
+    // Ensure you are using the correct model ID for Claude
+    const modelId = "anthropic.claude-sonnet-4-20250514-v1:0";
     const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
 
-    // Format for OpenAI GPT model on AWS Bedrock
+    // Format for Anthropic Claude model on AWS Bedrock
     const requestBody = JSON.stringify({
+      // A required field for Claude 3 models
+      anthropic_version: "bedrock-2023-05-31",
+      // All parameters are at the top level
       max_tokens: 2048,
       temperature: 0.7,
+      // The prompt is now inside a 'messages' array
       messages: [
         {
           role: "user",
@@ -126,19 +125,17 @@ async function generateTextWithGPT(key, env) {
 
     const responseData = await response.json();
 
-    // Extract the generated text from the response
+    // Extract the generated text from the Claude response
+    // The generated text is in `content[0].text`
     if (
-      responseData.choices &&
-      responseData.choices[0] &&
-      responseData.choices[0].message
+      responseData.content &&
+      responseData.content[0] &&
+      responseData.content[0].text
     ) {
-      let content = responseData.choices[0].message.content;
-      // Remove reasoning tags if present
-      content = content.replace(/<reasoning>.*?<\/reasoning>/g, "");
-      return content.trim();
+      return responseData.content[0].text.trim();
     } else {
       throw new Error(
-        "Unexpected response format: " + JSON.stringify(responseData),
+        "Unexpected Claude response format: " + JSON.stringify(responseData),
       );
     }
   });
