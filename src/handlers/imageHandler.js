@@ -2,6 +2,10 @@
 
 import { AwsClient } from "aws4fetch";
 import { base64ToArrayBuffer } from "../utils/buffer.js";
+import { callWithBackoff } from "../utils/awsRetry.js";
+
+// Map to track pending requests to prevent duplicate AWS calls
+const pendingImageRequests = new Map();
 
 /**
  * Handles image generation requests.
@@ -27,11 +31,55 @@ export async function handleImageGeneration(key, env) {
       return new Response(cachedImage.body, { headers });
     }
 
+    // 2. Check if there's already a pending request for this key
+    if (pendingImageRequests.has(key)) {
+      console.log(`Deduplicating request for image key: "${key}"`);
+      const imageBuffer = await pendingImageRequests.get(key);
+      return new Response(imageBuffer, {
+        headers: { "Content-Type": "image/png" },
+      });
+    }
+
     console.log(
       `Cache MISS for image key: "${key}". Generating with AWS Bedrock (Titan).`,
     );
 
-    // 2. If not in cache, create a signed request for AWS Bedrock
+    // 3. Create a promise for the AWS call and store it
+    const imagePromise = generateImageWithAWS(key, env);
+    pendingImageRequests.set(key, imagePromise);
+
+    try {
+      const imageBuffer = await imagePromise;
+
+      // 4. Store the newly generated image in the R2 cache
+      await env.IMAGE_BUCKET.put(key, imageBuffer, {
+        httpMetadata: { contentType: "image/png" },
+      });
+      console.log(`Successfully generated and cached image for key: "${key}"`);
+
+      // 5. Return the image to the user
+      return new Response(imageBuffer, {
+        headers: { "Content-Type": "image/png" },
+      });
+    } finally {
+      // Remove the pending request
+      pendingImageRequests.delete(key);
+    }
+  } catch (error) {
+    console.error("Worker Error (Image Generation):", error);
+    return new Response("An internal server error occurred.", { status: 500 });
+  }
+}
+
+/**
+ * Generate image with AWS Bedrock
+ * @param {string} key The prompt for image generation.
+ * @param {object} env Environment variables.
+ * @returns {Promise<ArrayBuffer>}
+ */
+async function generateImageWithAWS(key, env) {
+  return callWithBackoff(async () => {
+    // Create a signed request for AWS Bedrock
     const aws = new AwsClient({
       accessKeyId: env.AWS_ACCESS_KEY_ID,
       secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
@@ -61,7 +109,7 @@ export async function handleImageGeneration(key, env) {
       headers: { "Content-Type": "application/json" },
     });
 
-    // 3. Fetch the image from Bedrock
+    // Fetch the image from Bedrock
     const response = await fetch(signedRequest);
 
     if (!response.ok) {
@@ -72,20 +120,6 @@ export async function handleImageGeneration(key, env) {
 
     const responseData = await response.json();
     const base64ImageData = responseData.images[0];
-    const imageBuffer = base64ToArrayBuffer(base64ImageData);
-
-    // 4. Store the newly generated image in the R2 cache
-    await env.IMAGE_BUCKET.put(key, imageBuffer, {
-      httpMetadata: { contentType: "image/png" },
-    });
-    console.log(`Successfully generated and cached image for key: "${key}"`);
-
-    // 5. Return the image to the user
-    return new Response(imageBuffer, {
-      headers: { "Content-Type": "image/png" },
-    });
-  } catch (error) {
-    console.error("Worker Error (Image Generation):", error);
-    return new Response("An internal server error occurred.", { status: 500 });
-  }
+    return base64ToArrayBuffer(base64ImageData);
+  });
 }

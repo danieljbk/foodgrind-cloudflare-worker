@@ -1,9 +1,13 @@
 // src/handlers/textHandler.js
 
 import { AwsClient } from "aws4fetch";
+import { callWithBackoff } from "../utils/awsRetry.js";
+
+// Map to track pending requests to prevent duplicate AWS calls
+const pendingTextRequests = new Map();
 
 /**
- * Handles text generation requests using Anthropic Claude 3.
+ * Handles text generation requests using OpenAI GPT-OSS 120B.
  * @param {string} key The prompt for text generation.
  * @param {object} env Environment variables.
  * @returns {Promise<Response>}
@@ -25,10 +29,53 @@ export async function handleTextGeneration(key, env) {
       });
     }
 
+    // 2. Check if there's already a pending request for this key
+    if (pendingTextRequests.has(key)) {
+      console.log(`Deduplicating request for text key: "${key}"`);
+      const generatedText = await pendingTextRequests.get(key);
+      return new Response(generatedText, {
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
     console.log(
-      `Cache MISS for text key: "${key}". Generating with AWS Bedrock (Claude).`,
+      `Cache MISS for text key: "${key}". Generating with AWS Bedrock.`,
     );
 
+    // 3. Create a promise for the AWS call and store it
+    const textPromise = generateTextWithAWS(key, env);
+    pendingTextRequests.set(key, textPromise);
+
+    try {
+      const generatedText = await textPromise;
+
+      // 4. Store the newly generated text in the KV cache
+      // You can also set a TTL (time-to-live) for the cache, in seconds
+      await env.TEXT_CACHE.put(key, generatedText, { expirationTtl: 86400 }); // Cache for one day (86400 seconds)
+
+      console.log(`Successfully generated and cached text for key: "${key}"`);
+
+      return new Response(generatedText, {
+        headers: { "Content-Type": "text/plain" },
+      });
+    } finally {
+      // Remove the pending request
+      pendingTextRequests.delete(key);
+    }
+  } catch (error) {
+    console.error("Worker Error (Text Generation):", error);
+    return new Response("An internal server error occurred.", { status: 500 });
+  }
+}
+
+/**
+ * Generate text with AWS Bedrock
+ * @param {string} key The prompt for text generation.
+ * @param {object} env Environment variables.
+ * @returns {Promise<string>}
+ */
+async function generateTextWithAWS(key, env) {
+  return callWithBackoff(async () => {
     const aws = new AwsClient({
       accessKeyId: env.AWS_ACCESS_KEY_ID,
       secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
@@ -36,18 +83,14 @@ export async function handleTextGeneration(key, env) {
       service: "bedrock",
     });
 
-    // Ensure you are using the correct model ID for Claude
-    const modelId = "anthropic.claude-3-5-sonnet-20240620-v1:0";
+    // Ensure you are using the correct model ID
+    const modelId = "openai.gpt-oss-120b-1:0";
     const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
 
-    // --- THIS IS THE UPDATED PART FOR CLAUDE ---
+    // Format for OpenAI GPT model on AWS Bedrock
     const requestBody = JSON.stringify({
-      // A required field for Claude 3 models
-      anthropic_version: "bedrock-2023-05-31",
-      // All parameters are at the top level
       max_tokens: 2048,
       temperature: 0.7,
-      // The prompt is now inside a 'messages' array
       messages: [
         {
           role: "user",
@@ -77,21 +120,14 @@ export async function handleTextGeneration(key, env) {
 
     const responseData = await response.json();
 
-    // --- AND THE RESPONSE FORMAT IS DIFFERENT TOO ---
-    // The generated text is in `content[0].text`
-    const generatedText = responseData.content[0].text;
-
-    // 4. Store the newly generated text in the KV cache
-    // You can also set a TTL (time-to-live) for the cache, in seconds
-    await env.TEXT_CACHE.put(key, generatedText, { expirationTtl: 86400 }); // Cache for one day (86400 seconds)
-
-    console.log(`Successfully generated and cached text for key: "${key}"`);
-
-    return new Response(generatedText, {
-      headers: { "Content-Type": "text/plain" },
-    });
-  } catch (error) {
-    console.error("Worker Error (Text Generation):", error);
-    return new Response("An internal server error occurred.", { status: 500 });
-  }
+    // Extract the generated text from the response
+    if (responseData.choices && responseData.choices[0] && responseData.choices[0].message) {
+      let content = responseData.choices[0].message.content;
+      // Remove reasoning tags if present
+      content = content.replace(/<reasoning>.*?<\/reasoning>/g, '');
+      return content.trim();
+    } else {
+      throw new Error("Unexpected response format: " + JSON.stringify(responseData));
+    }
+  });
 }

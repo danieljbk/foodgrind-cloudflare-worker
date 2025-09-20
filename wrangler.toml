@@ -21,3 +21,6 @@ bucket_name = "foodgrind-image-storage"
 [[kv_namespaces]]
 binding = "TEXT_CACHE"
 id = "9f7892da1d90486196e588cff983712f"
+
+[observability.logs]
+enabled = true

@@ -5,7 +5,7 @@ This API, hosted on Cloudflare Workers, provides endpoints for generating images
 ## Features
 
 -   **Image Generation**: Generate images from text prompts using Amazon Titan Image Generator V2.
--   **Text Generation**: Generate text from prompts using Anthropic Claude 3.5 Sonnet.
+-   **Text Generation**: Generate text from prompts using OpenAI GPT-OSS 120B.
 -   **Caching**: Caches generated images in Cloudflare R2 and text in Cloudflare KV to reduce latency and cost on subsequent requests with the same prompt.
 
 ## Technology Stack
@@ -13,7 +13,7 @@ This API, hosted on Cloudflare Workers, provides endpoints for generating images
 -   **Runtime**: Cloudflare Workers
 -   **AI Models**:
     -   Image: Amazon Titan Image Generator V2 (via AWS Bedrock)
-    -   Text: Anthropic Claude 3.5 Sonnet (via AWS Bedrock)
+    -   Text: OpenAI GPT-OSS 120B (via AWS Bedrock)
 -   **Storage**:
     -   Image Cache: Cloudflare R2
     -   Text Cache: Cloudflare KV
