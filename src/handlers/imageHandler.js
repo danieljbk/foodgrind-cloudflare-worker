@@ -1,7 +1,6 @@
 // src/handlers/imageHandler.js
 
 import { base64ToArrayBuffer } from "../utils/buffer.js";
-import { callWithBackoff } from "../utils/awsRetry.js";
 import { createAwsClient } from "../utils/awsHelper.js";
 
 // Map to track pending requests to prevent duplicate AWS calls
@@ -85,42 +84,40 @@ async function generateImageWithAWS(key, env) {
   // Create a new AWS client for each request to avoid state-related signing issues.
   const aws = createAwsClient(env);
 
-  return callWithBackoff(async () => {
-    const modelId = "amazon.titan-image-generator-v2:0";
-    const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
+  const modelId = "amazon.titan-image-generator-v2:0";
+  const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
 
-    const requestBody = JSON.stringify({
-      taskType: "TEXT_IMAGE",
-      textToImageParams: { text: key },
-      imageGenerationConfig: {
-        numberOfImages: 1,
-        quality: "standard",
-        height: 1024,
-        width: 1024,
-        cfgScale: 8.0,
-        seed: Math.floor(Math.random() * 2147483647),
-      },
-    });
-
-    const signedRequest = await aws.sign(endpoint, {
-      method: "POST",
-      body: requestBody,
-      headers: { "Content-Type": "application/json" },
-    });
-
-    // Fetch the image from Bedrock
-    const response = await fetch(signedRequest);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Bedrock API Error:", errorText);
-      console.error("Response Status:", response.status);
-      console.error("Response Headers:", [...response.headers]);
-      throw new Error(`Bedrock API Error: ${response.status} - ${errorText}`);
-    }
-
-    const responseData = await response.json();
-    const base64ImageData = responseData.images[0];
-    return base64ToArrayBuffer(base64ImageData);
+  const requestBody = JSON.stringify({
+    taskType: "TEXT_IMAGE",
+    textToImageParams: { text: key },
+    imageGenerationConfig: {
+      numberOfImages: 1,
+      quality: "standard",
+      height: 1024,
+      width: 1024,
+      cfgScale: 8.0,
+      seed: Math.floor(Math.random() * 2147483647),
+    },
   });
+
+  const signedRequest = await aws.sign(endpoint, {
+    method: "POST",
+    body: requestBody,
+    headers: { "Content-Type": "application/json" },
+  });
+
+  // Fetch the image from Bedrock
+  const response = await fetch(signedRequest);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Bedrock API Error:", errorText);
+    console.error("Response Status:", response.status);
+    console.error("Response Headers:", [...response.headers]);
+    throw new Error(`Bedrock API Error: ${response.status} - ${errorText}`);
+  }
+
+  const responseData = await response.json();
+  const base64ImageData = responseData.images[0];
+  return base64ToArrayBuffer(base64ImageData);
 }

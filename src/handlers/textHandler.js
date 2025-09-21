@@ -1,6 +1,5 @@
 // src/handlers/textHandler.js
 
-import { callWithBackoff } from "../utils/awsRetry.js";
 import { createAwsClient, createSignedRequest } from "../utils/awsHelper.js";
 
 // Map to track pending requests to prevent duplicate AWS calls
@@ -87,63 +86,61 @@ async function generateTextWithGPT(key, env) {
   // Create a new AWS client for each request to avoid state-related signing issues.
   const aws = createAwsClient(env);
 
-  return callWithBackoff(async () => {
-    // Ensure you are using the correct model ID
-    const modelId = "openai.gpt-oss-120b-1:0";
-    const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
+  // Ensure you are using the correct model ID
+  const modelId = "openai.gpt-oss-120b-1:0";
+  const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
 
-    // Format for OpenAI GPT model on AWS Bedrock
-    const requestBody = JSON.stringify({
-      max_tokens: 2048,
-      temperature: 0.7,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: key,
-            },
-          ],
-        },
-      ],
-    });
-
-    const signedRequest = await createSignedRequest(aws, endpoint, requestBody);
-
-    const response = await fetch(signedRequest);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Bedrock API Error:", errorText);
-      console.error("Response Status:", response.status);
-      console.error("Response Headers:", [...response.headers]);
-      
-      // Special handling for authentication errors
-      if (response.status === 403 || response.status === 401) {
-        console.error("Authentication error with AWS Bedrock. This may be due to signature issues in distributed environments.");
-        throw new Error(`AWS Authentication Error: ${response.status} - ${errorText}. This may occur when requests are routed to different edge locations.`);
-      }
-      
-      throw new Error(`Bedrock API Error: ${response.status} - ${errorText}`);
-    }
-
-    const responseData = await response.json();
-
-    // Extract the generated text from the response
-    if (
-      responseData.choices &&
-      responseData.choices[0] &&
-      responseData.choices[0].message
-    ) {
-      let content = responseData.choices[0].message.content;
-      // Remove reasoning tags if present
-      content = content.replace(/<reasoning>.*?<\/reasoning>/g, "");
-      return content.trim();
-    } else {
-      throw new Error(
-        "Unexpected response format: " + JSON.stringify(responseData),
-      );
-    }
+  // Format for OpenAI GPT model on AWS Bedrock
+  const requestBody = JSON.stringify({
+    max_tokens: 2048,
+    temperature: 0.7,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: key,
+          },
+        ],
+      },
+    ],
   });
+
+  const signedRequest = await createSignedRequest(aws, endpoint, requestBody);
+
+  const response = await fetch(signedRequest);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Bedrock API Error:", errorText);
+    console.error("Response Status:", response.status);
+    console.error("Response Headers:", [...response.headers]);
+    
+    // Special handling for authentication errors
+    if (response.status === 403 || response.status === 401) {
+      console.error("Authentication error with AWS Bedrock. This may be due to signature issues in distributed environments.");
+      throw new Error(`AWS Authentication Error: ${response.status} - ${errorText}. This may occur when requests are routed to different edge locations.`);
+    }
+    
+    throw new Error(`Bedrock API Error: ${response.status} - ${errorText}`);
+  }
+
+  const responseData = await response.json();
+
+  // Extract the generated text from the response
+  if (
+    responseData.choices &&
+    responseData.choices[0] &&
+    responseData.choices[0].message
+  ) {
+    let content = responseData.choices[0].message.content;
+    // Remove reasoning tags if present
+    content = content.replace(/<reasoning>.*?<\/reasoning>/g, "");
+    return content.trim();
+  } else {
+    throw new Error(
+      "Unexpected response format: " + JSON.stringify(responseData),
+    );
+  }
 }

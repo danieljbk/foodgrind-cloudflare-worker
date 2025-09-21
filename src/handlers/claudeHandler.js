@@ -1,6 +1,5 @@
 // src/handlers/claudeHandler.js
 
-import { callWithBackoff } from "../utils/awsRetry.js";
 import { createAwsClient, createSignedRequest } from "../utils/awsHelper.js";
 
 // Map to track pending requests to prevent duplicate AWS calls
@@ -82,69 +81,67 @@ async function generateTextWithClaude(key, env) {
   // Create a new AWS client for each request to avoid state-related signing issues.
   const aws = createAwsClient(env);
 
-  return callWithBackoff(async () => {
-    // Ensure you are using the correct model ID for Claude
-    const modelId = "anthropic.claude-3-5-sonnet-20241022-v2:0";
-    const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
+  // Ensure you are using the correct model ID for Claude
+  const modelId = "anthropic.claude-3-5-sonnet-20241022-v2:0";
+  const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
 
-    // Format for Anthropic Claude model on AWS Bedrock
-    const requestBody = JSON.stringify({
-      // A required field for Claude 3 models
-      anthropic_version: "bedrock-2023-05-31",
-      // All parameters are at the top level
-      max_tokens: 2048,
-      temperature: 0.7,
-      // The prompt is now inside a 'messages' array
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: key,
-            },
-          ],
-        },
-      ],
-    });
+  // Format for Anthropic Claude model on AWS Bedrock
+  const requestBody = JSON.stringify({
+    // A required field for Claude 3 models
+    anthropic_version: "bedrock-2023-05-31",
+    // All parameters are at the top level
+    max_tokens: 2048,
+    temperature: 0.7,
+    // The prompt is now inside a 'messages' array
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: key,
+          },
+        ],
+      },
+    ],
+  });
 
-    const signedRequest = await createSignedRequest(aws, endpoint, requestBody);
+  const signedRequest = await createSignedRequest(aws, endpoint, requestBody);
 
-    const response = await fetch(signedRequest);
+  const response = await fetch(signedRequest);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Bedrock API Error:", errorText);
-      console.error("Response Status:", response.status);
-      console.error("Response Headers:", [...response.headers]);
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Bedrock API Error:", errorText);
+    console.error("Response Status:", response.status);
+    console.error("Response Headers:", [...response.headers]);
 
-      // Special handling for authentication errors
-      if (response.status === 403 || response.status === 401) {
-        console.error(
-          "Authentication error with AWS Bedrock. This may be due to signature issues in distributed environments.",
-        );
-        throw new Error(
-          `AWS Authentication Error: ${response.status} - ${errorText}. This may occur when requests are routed to different edge locations.`,
-        );
-      }
-
-      throw new Error(`Bedrock API Error: ${response.status} - ${errorText}`);
-    }
-
-    const responseData = await response.json();
-
-    // Extract the generated text from the Claude response
-    // The generated text is in `content[0].text`
-    if (
-      responseData.content &&
-      responseData.content[0] &&
-      responseData.content[0].text
-    ) {
-      return responseData.content[0].text.trim();
-    } else {
+    // Special handling for authentication errors
+    if (response.status === 403 || response.status === 401) {
+      console.error(
+        "Authentication error with AWS Bedrock. This may be due to signature issues in distributed environments.",
+      );
       throw new Error(
-        "Unexpected Claude response format: " + JSON.stringify(responseData),
+        `AWS Authentication Error: ${response.status} - ${errorText}. This may occur when requests are routed to different edge locations.`,
       );
     }
-  });
+
+    throw new Error(`Bedrock API Error: ${response.status} - ${errorText}`);
+  }
+
+  const responseData = await response.json();
+
+  // Extract the generated text from the Claude response
+  // The generated text is in `content[0].text`
+  if (
+    responseData.content &&
+    responseData.content[0] &&
+    responseData.content[0].text
+  ) {
+    return responseData.content[0].text.trim();
+  } else {
+    throw new Error(
+      "Unexpected Claude response format: " + JSON.stringify(responseData),
+    );
+  }
 }
