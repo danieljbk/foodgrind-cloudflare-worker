@@ -1,8 +1,8 @@
 // src/handlers/imageHandler.js
 
-import { AwsClient } from "aws4fetch";
 import { base64ToArrayBuffer } from "../utils/buffer.js";
 import { callWithBackoff } from "../utils/awsRetry.js";
+import { createAwsClient } from "../utils/awsHelper.js";
 
 // Map to track pending requests to prevent duplicate AWS calls
 const pendingImageRequests = new Map();
@@ -68,9 +68,9 @@ export async function handleImageGeneration(key, env) {
   } catch (error) {
     console.error("Worker Error (Image Generation):", error);
     // Return more detailed error information
-    return new Response(`An internal server error occurred: ${error.message}`, { 
+    return new Response(`An internal server error occurred: ${error.message}`, {
       status: 500,
-      headers: { "Content-Type": "text/plain" }
+      headers: { "Content-Type": "text/plain" },
     });
   }
 }
@@ -83,15 +83,10 @@ export async function handleImageGeneration(key, env) {
  */
 async function generateImageWithAWS(key, env) {
   // Create a new AWS client for each request to avoid state-related signing issues.
-  const aws = new AwsClient({
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-    region: env.AWS_REGION,
-    service: "bedrock",
-  });
+  const aws = createAwsClient(env);
 
   return callWithBackoff(async () => {
-    const modelId = "amazon.titan-image-generator-v1:0";
+    const modelId = "amazon.titan-image-generator-v2:0";
     const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
 
     const requestBody = JSON.stringify({
