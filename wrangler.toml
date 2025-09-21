@@ -1,7 +1,7 @@
 # wrangler.toml
 
 # The name of your Cloudflare Worker.
-name = "foodgrind-image-generator"
+name = "foodgrind-worker"
 
 # The entry point for your Worker's source code.
 # This correctly points to our new modular structure.

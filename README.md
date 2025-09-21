@@ -6,7 +6,7 @@ This API, hosted on Cloudflare Workers, provides endpoints for generating images
 
 -   **Image Generation**: Generate images from text prompts using Amazon Titan Image Generator V2.
 -   **Text Generation (GPT)**: Generate text from prompts using OpenAI GPT-OSS 120B.
--   **Text Generation (Claude)**: Generate text from prompts using Anthropic Claude 3.5 Sonnet.
+-   **Text Generation (Claude)**: Generate text from prompts using Anthropic Claude 4 Sonnet.
 -   **Caching**: Caches generated images in Cloudflare R2 and text in Cloudflare KV to reduce latency and cost on subsequent requests with the same prompt.
 
 ## Technology Stack
@@ -15,7 +15,7 @@ This API, hosted on Cloudflare Workers, provides endpoints for generating images
 -   **AI Models**:
     -   Image: Amazon Titan Image Generator V2 (via AWS Bedrock)
     -   Text (GPT): OpenAI GPT-OSS 120B (via AWS Bedrock)
-    -   Text (Claude): Anthropic Claude 3.5 Sonnet (via AWS Bedrock)
+    -   Text (Claude): Anthropic Claude 4 Sonnet (via AWS Bedrock)
 -   **Storage**:
     -   Image Cache: Cloudflare R2
     -   Text Cache: Cloudflare KV
@@ -47,6 +47,7 @@ This API, hosted on Cloudflare Workers, provides endpoints for generating images
 -   **Method**: `GET`
 -   **Endpoint**: `/gpt/{prompt}`
 -   **Description**: Generates text based on the provided `{prompt}` using OpenAI GPT-OSS 120B. The first request for a given prompt will generate new text and cache it in KV. Subsequent requests for the same prompt will return the cached text.
+    > **Note**: To address authentication issues in distributed environments, each request creates a fresh AWS signature. This prevents signature validation errors that can occur when Cloudflare Workers route requests to different edge locations.
 -   **URL Parameters**:
     -   `prompt` (required): The text prompt to use for text generation.
 -   **Example Usage (cURL)**:
@@ -64,7 +65,8 @@ This API, hosted on Cloudflare Workers, provides endpoints for generating images
 
 -   **Method**: `GET`
 -   **Endpoint**: `/claude/{prompt}`
--   **Description**: Generates text based on the provided `{prompt}` using Anthropic Claude 3.5 Sonnet. The first request for a given prompt will generate new text and cache it in KV. Subsequent requests for the same prompt will return the cached text.
+-   **Description**: Generates text based on the provided `{prompt}` using Anthropic Claude 4 Sonnet. The first request for a given prompt will generate new text and cache it in KV. Subsequent requests for the same prompt will return the cached text.
+    > **Note**: To address authentication issues in distributed environments, each request creates a fresh AWS signature. This prevents signature validation errors that can occur when Cloudflare Workers route requests to different edge locations.
 -   **URL Parameters**:
     -   `prompt` (required): The text prompt to use for text generation.
 -   **Example Usage (cURL)**:
@@ -129,3 +131,18 @@ This API, hosted on Cloudflare Workers, provides endpoints for generating images
     ```bash
     npx wrangler deploy
     ```
+
+## Troubleshooting
+
+### AWS Authentication Errors
+
+If you encounter authentication errors (401 or 403 status codes) with AWS Bedrock, this is likely due to signature validation issues in distributed environments. Cloudflare Workers may route requests to different edge locations, and AWS signatures are tied to specific servers.
+
+Our implementation addresses this by:
+1. Creating a fresh AWS client for each request
+2. Generating a new signature for each API call
+
+If you continue to experience authentication issues, try:
+1. Verifying your AWS credentials are correctly set in the environment variables
+2. Ensuring your AWS user/role has the necessary permissions for Bedrock
+3. Checking that your AWS region is correctly configured

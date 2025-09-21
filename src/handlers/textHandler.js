@@ -1,7 +1,8 @@
 // src/handlers/textHandler.js
 
-import { AwsClient } from "aws4fetch";
 import { callWithBackoff } from "../utils/awsRetry.js";
+import { createAwsClient, createSignedRequest } from "../utils/awsHelper.js";
+import { executeWithRateLimit } from "../utils/requestQueue.js";
 
 // Map to track pending requests to prevent duplicate AWS calls
 const pendingTextRequests = new Map();
@@ -67,7 +68,11 @@ export async function handleTextGeneration(key, env) {
     }
   } catch (error) {
     console.error("Worker Error (Text Generation):", error);
-    return new Response("An internal server error occurred.", { status: 500 });
+    // Return more detailed error information
+    return new Response(`An internal server error occurred: ${error.message}`, { 
+      status: 500,
+      headers: { "Content-Type": "text/plain" }
+    });
   }
 }
 
@@ -80,15 +85,14 @@ export async function handleTextGeneration(key, env) {
  * @returns {Promise<string>}
  */
 async function generateTextWithGPT(key, env) {
+  // Add a small random delay to help prevent rate limiting
+  const delay = Math.floor(Math.random() * 500); // 0-500ms delay
+  await new Promise(resolve => setTimeout(resolve, delay));
+  
   // Create a new AWS client for each request to avoid state-related signing issues.
-  const aws = new AwsClient({
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-    region: env.AWS_REGION,
-    service: "bedrock",
-  });
+  const aws = createAwsClient(env);
 
-  return callWithBackoff(async () => {
+  return executeWithRateLimit(async () => {
     // Ensure you are using the correct model ID
     const modelId = "openai.gpt-oss-120b-1:0";
     const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
@@ -110,17 +114,22 @@ async function generateTextWithGPT(key, env) {
       ],
     });
 
-    const signedRequest = await aws.sign(endpoint, {
-      method: "POST",
-      body: requestBody,
-      headers: { "Content-Type": "application/json" },
-    });
+    const signedRequest = await createSignedRequest(aws, endpoint, requestBody);
 
     const response = await fetch(signedRequest);
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Bedrock API Error:", errorText);
+      console.error("Response Status:", response.status);
+      console.error("Response Headers:", [...response.headers]);
+      
+      // Special handling for authentication errors
+      if (response.status === 403 || response.status === 401) {
+        console.error("Authentication error with AWS Bedrock. This may be due to signature issues in distributed environments.");
+        throw new Error(`AWS Authentication Error: ${response.status} - ${errorText}. This may occur when requests are routed to different edge locations.`);
+      }
+      
       throw new Error(`Bedrock API Error: ${response.status} - ${errorText}`);
     }
 

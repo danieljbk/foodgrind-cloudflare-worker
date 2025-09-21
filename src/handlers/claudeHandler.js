@@ -1,13 +1,14 @@
 // src/handlers/claudeHandler.js
 
-import { AwsClient } from "aws4fetch";
 import { callWithBackoff } from "../utils/awsRetry.js";
+import { createAwsClient, createSignedRequest } from "../utils/awsHelper.js";
+import { executeWithRateLimit } from "../utils/requestQueue.js";
 
 // Map to track pending requests to prevent duplicate AWS calls
 const pendingClaudeRequests = new Map();
 
 /**
- * Handles text generation requests using Anthropic Claude 3.
+ * Handles text generation requests using Anthropic Claude 4 Sonnet.
  * @param {string} key The prompt for text generation.
  * @param {object} env Environment variables.
  * @returns {Promise<Response>}
@@ -64,7 +65,11 @@ export async function handleClaudeTextGeneration(key, env) {
     }
   } catch (error) {
     console.error("Worker Error (Text Generation):", error);
-    return new Response("An internal server error occurred.", { status: 500 });
+    // Return more detailed error information
+    return new Response(`An internal server error occurred: ${error.message}`, {
+      status: 500,
+      headers: { "Content-Type": "text/plain" },
+    });
   }
 }
 
@@ -75,17 +80,16 @@ export async function handleClaudeTextGeneration(key, env) {
  * @returns {Promise<string>}
  */
 async function generateTextWithClaude(key, env) {
-  // Create a new AWS client for each request to avoid state-related signing issues.
-  const aws = new AwsClient({
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-    region: env.AWS_REGION,
-    service: "bedrock",
-  });
+  // Add a small random delay to help prevent rate limiting
+  const delay = Math.floor(Math.random() * 500); // 0-500ms delay
+  await new Promise((resolve) => setTimeout(resolve, delay));
 
-  return callWithBackoff(async () => {
+  // Create a new AWS client for each request to avoid state-related signing issues.
+  const aws = createAwsClient(env);
+
+  return executeWithRateLimit(async () => {
     // Ensure you are using the correct model ID for Claude
-    const modelId = "anthropic.claude-sonnet-4-20250514-v1:0";
+    const modelId = "anthropic.claude-3-5-sonnet-20241022-v2:0";
     const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
 
     // Format for Anthropic Claude model on AWS Bedrock
@@ -109,17 +113,26 @@ async function generateTextWithClaude(key, env) {
       ],
     });
 
-    const signedRequest = await aws.sign(endpoint, {
-      method: "POST",
-      body: requestBody,
-      headers: { "Content-Type": "application/json" },
-    });
+    const signedRequest = await createSignedRequest(aws, endpoint, requestBody);
 
     const response = await fetch(signedRequest);
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Bedrock API Error:", errorText);
+      console.error("Response Status:", response.status);
+      console.error("Response Headers:", [...response.headers]);
+
+      // Special handling for authentication errors
+      if (response.status === 403 || response.status === 401) {
+        console.error(
+          "Authentication error with AWS Bedrock. This may be due to signature issues in distributed environments.",
+        );
+        throw new Error(
+          `AWS Authentication Error: ${response.status} - ${errorText}. This may occur when requests are routed to different edge locations.`,
+        );
+      }
+
       throw new Error(`Bedrock API Error: ${response.status} - ${errorText}`);
     }
 
