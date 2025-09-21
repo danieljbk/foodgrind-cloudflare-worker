@@ -2,7 +2,6 @@
 
 import { callWithBackoff } from "../utils/awsRetry.js";
 import { createAwsClient, createSignedRequest } from "../utils/awsHelper.js";
-import { executeWithRateLimit } from "../utils/requestQueue.js";
 
 // Map to track pending requests to prevent duplicate AWS calls
 const pendingTextRequests = new Map();
@@ -85,14 +84,10 @@ export async function handleTextGeneration(key, env) {
  * @returns {Promise<string>}
  */
 async function generateTextWithGPT(key, env) {
-  // Add a small random delay to help prevent rate limiting
-  const delay = Math.floor(Math.random() * 500); // 0-500ms delay
-  await new Promise(resolve => setTimeout(resolve, delay));
-  
   // Create a new AWS client for each request to avoid state-related signing issues.
   const aws = createAwsClient(env);
 
-  return executeWithRateLimit(async () => {
+  return callWithBackoff(async () => {
     // Ensure you are using the correct model ID
     const modelId = "openai.gpt-oss-120b-1:0";
     const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;

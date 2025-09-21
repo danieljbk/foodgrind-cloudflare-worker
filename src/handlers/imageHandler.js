@@ -3,7 +3,6 @@
 import { AwsClient } from "aws4fetch";
 import { base64ToArrayBuffer } from "../utils/buffer.js";
 import { callWithBackoff } from "../utils/awsRetry.js";
-import { executeWithRateLimit } from "../utils/requestQueue.js";
 
 // Map to track pending requests to prevent duplicate AWS calls
 const pendingImageRequests = new Map();
@@ -69,9 +68,9 @@ export async function handleImageGeneration(key, env) {
   } catch (error) {
     console.error("Worker Error (Image Generation):", error);
     // Return more detailed error information
-    return new Response(`An internal server error occurred: ${error.message}`, {
+    return new Response(`An internal server error occurred: ${error.message}`, { 
       status: 500,
-      headers: { "Content-Type": "text/plain" },
+      headers: { "Content-Type": "text/plain" }
     });
   }
 }
@@ -83,10 +82,6 @@ export async function handleImageGeneration(key, env) {
  * @returns {Promise<ArrayBuffer>}
  */
 async function generateImageWithAWS(key, env) {
-  // Add a small random delay to help prevent rate limiting
-  const delay = Math.floor(Math.random() * 500); // 0-500ms delay
-  await new Promise((resolve) => setTimeout(resolve, delay));
-
   // Create a new AWS client for each request to avoid state-related signing issues.
   const aws = new AwsClient({
     accessKeyId: env.AWS_ACCESS_KEY_ID,
@@ -95,7 +90,7 @@ async function generateImageWithAWS(key, env) {
     service: "bedrock",
   });
 
-  return executeWithRateLimit(async () => {
+  return callWithBackoff(async () => {
     const modelId = "amazon.titan-image-generator-v1:0";
     const endpoint = `https://bedrock-runtime.${env.AWS_REGION}.amazonaws.com/model/${modelId}/invoke`;
 
