@@ -53,6 +53,7 @@ const MODEL_CONFIGS = {
         let content = responseData.choices[0].message.content;
         // Remove reasoning tags if present
         content = content.replace(/<reasoning>.*?<\/reasoning>/g, "");
+        // Ensure proper UTF-8 encoding and trim whitespace
         return content.trim();
       }
       throw new Error("Unexpected GPT response format: " + JSON.stringify(responseData));
@@ -82,6 +83,7 @@ const MODEL_CONFIGS = {
         responseData.content[0] &&
         responseData.content[0].text
       ) {
+        // Ensure proper UTF-8 encoding and trim whitespace
         return responseData.content[0].text.trim();
       }
       throw new Error("Unexpected Claude response format: " + JSON.stringify(responseData));

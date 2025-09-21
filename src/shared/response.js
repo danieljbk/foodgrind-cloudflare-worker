@@ -7,8 +7,13 @@
  * @returns {Response} A standardized Response object
  */
 export function createSuccessResponse(data, contentType) {
+  // Ensure proper UTF-8 encoding for text responses
+  const finalContentType = contentType.includes('text/') && !contentType.includes('charset') 
+    ? contentType + "; charset=utf-8" 
+    : contentType;
+    
   return new Response(data, {
-    headers: { "Content-Type": contentType },
+    headers: { "Content-Type": finalContentType },
   });
 }
 
@@ -28,7 +33,7 @@ export function createErrorResponse(error, status = 500, context = "") {
   }
   return new Response(`An internal server error occurred: ${errorMessage}`, {
     status: status,
-    headers: { "Content-Type": "text/plain" },
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
   });
 }
 
@@ -40,7 +45,7 @@ export function createErrorResponse(error, status = 500, context = "") {
 export function createValidationErrorResponse(message) {
   return new Response(message, {
     status: 400,
-    headers: { "Content-Type": "text/plain" },
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
   });
 }
 

@@ -27,9 +27,10 @@ export async function handleCache(
     const cachedObject = await env.IMAGE_BUCKET.get(storageKey);
     if (cachedObject !== null) {
       console.log(`Cache HIT for key (Hashed): "${storageKey}"`);
-      // For text data, we need to read the contents
+      // For text data, we need to read the contents with proper UTF-8 encoding
       if (contentType === "text/plain") {
-        const text = await cachedObject.text();
+        // Ensure we're reading the text with UTF-8 encoding
+        const text = await cachedObject.text('utf-8');
         return text;
       }
       // For binary data (images), return the object directly
@@ -45,14 +46,14 @@ export async function handleCache(
     // For text data, we need to convert it to a format that R2 can store properly
     let dataToStore = result;
     if (contentType === "text/plain" && typeof result === "string") {
-      // Convert string to ArrayBuffer for proper R2 storage
+      // Convert string to Uint8Array with explicit UTF-8 encoding for proper R2 storage
       const encoder = new TextEncoder();
-      dataToStore = encoder.encode(result).buffer;
+      dataToStore = encoder.encode(result);
     }
 
-    // Store in R2 cache
+    // Store in R2 cache with explicit UTF-8 content type
     await env.IMAGE_BUCKET.put(storageKey, dataToStore, {
-      httpMetadata: { contentType: contentType },
+      httpMetadata: { contentType: contentType + "; charset=utf-8" },
       ...options,
     });
 
@@ -81,8 +82,9 @@ export function createCachedResponse(data, contentType) {
     return new Response(data.body, { headers });
   } else {
     // Direct data response (text data or raw data)
+    // Ensure proper UTF-8 encoding for text responses
     return new Response(data, {
-      headers: { "Content-Type": contentType },
+      headers: { "Content-Type": contentType + "; charset=utf-8" },
     });
   }
 }
