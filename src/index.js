@@ -3,6 +3,7 @@
 import { handleImageGeneration } from "./handlers/imageHandler.js";
 import { handleTextGeneration } from "./handlers/textHandler.js";
 import { handleClaudeTextGeneration } from "./handlers/claudeHandler.js";
+import { addCorsHeaders, createErrorResponse, createValidationErrorResponse } from "./shared/response.js";
 
 export default {
   /**
@@ -11,14 +12,6 @@ export default {
    * @returns {Promise<Response>}
    */
   async fetch(request, env) {
-    // Add CORS headers for all responses
-    const addCorsHeaders = (response) => {
-      response.headers.set("Access-Control-Allow-Origin", "*");
-      response.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-      response.headers.set("Access-Control-Allow-Headers", "Content-Type");
-      return response;
-    };
-
     // Handle preflight OPTIONS requests
     if (request.method === "OPTIONS") {
       return addCorsHeaders(new Response(null, { status: 204 }));
@@ -46,20 +39,15 @@ export default {
         return addCorsHeaders(response);
       }
 
-      return addCorsHeaders(new Response(
-        "Invalid request. Use /image/{prompt}, /gpt/{prompt}, or /claude/{prompt}.",
-        {
-          status: 400,
-        },
+      return addCorsHeaders(createValidationErrorResponse(
+        "Invalid request. Use /image/{prompt}, /gpt/{prompt}, or /claude/{prompt}."
       ));
     } catch (error) {
       console.error("Unhandled error in worker:", error);
-      return addCorsHeaders(new Response(
-        "An internal server error occurred.",
-        { 
-          status: 500,
-          headers: { "Content-Type": "text/plain" }
-        },
+      return addCorsHeaders(createErrorResponse(
+        error,
+        500,
+        "Worker"
       ));
     }
   },
