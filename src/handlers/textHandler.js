@@ -39,7 +39,6 @@ export async function handleTextGeneration(key, env) {
   return await textHandler.handleRequest(
     key,
     env,
-    'KV', // cacheType
     () => textHandler.generateText(key, env),
     "text/plain"
   );

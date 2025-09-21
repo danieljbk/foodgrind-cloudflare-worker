@@ -36,7 +36,6 @@ export async function handleClaudeTextGeneration(key, env) {
   return await claudeHandler.handleRequest(
     key,
     env,
-    'KV', // cacheType
     () => claudeHandler.generateText(key, env),
     "text/plain"
   );

@@ -1,48 +1,32 @@
 // src/shared/cache.js
 
 /**
- * Handles caching logic for both R2 and KV storage
+ * Handles caching logic using R2 storage only
  * @param {string} key The cache key
  * @param {object} env Environment variables
- * @param {string} cacheType Either 'R2' or 'KV'
  * @param {Function} generateFunction Function that generates the data if not cached
+ * @param {string} contentType The content type for the data
  * @param {object} options Additional options for caching
  * @returns {Promise<any>} The cached or generated data
  */
-export async function handleCache(key, env, cacheType, generateFunction, options = {}) {
+export async function handleCache(key, env, generateFunction, contentType, options = {}) {
   try {
     // Check cache first
-    let cachedData;
-    if (cacheType === 'R2') {
-      cachedData = await env.IMAGE_BUCKET.get(key);
-      if (cachedData !== null) {
-        console.log(`Cache HIT for key: "${key}"`);
-        return cachedData;
-      }
-    } else if (cacheType === 'KV') {
-      cachedData = await env.TEXT_CACHE.get(key);
-      if (cachedData !== null) {
-        console.log(`Cache HIT for key: "${key}"`);
-        return cachedData;
-      }
+    const cachedData = await env.IMAGE_BUCKET.get(key);
+    if (cachedData !== null) {
+      console.log(`Cache HIT for key: "${key}"`);
+      return cachedData;
     }
 
     // Generate if not cached
     console.log(`Cache MISS for key: "${key}". Generating new data.`);
     const result = await generateFunction();
 
-    // Store in cache
-    if (cacheType === 'R2') {
-      await env.IMAGE_BUCKET.put(key, result, {
-        httpMetadata: { contentType: "image/png" },
-        ...options
-      });
-    } else if (cacheType === 'KV') {
-      await env.TEXT_CACHE.put(key, result, {
-        expirationTtl: 86400, // Cache for one day by default
-        ...options
-      });
-    }
+    // Store in R2 cache
+    await env.IMAGE_BUCKET.put(key, result, {
+      httpMetadata: { contentType: contentType },
+      ...options
+    });
 
     console.log(`Successfully generated and cached data for key: "${key}"`);
     return result;
@@ -66,7 +50,7 @@ export function createCachedResponse(data, contentType) {
     headers.set("etag", data.httpEtag);
     return new Response(data.body, { headers });
   } else {
-    // KV or other data response
+    // Direct data response
     return new Response(data, {
       headers: { "Content-Type": contentType },
     });

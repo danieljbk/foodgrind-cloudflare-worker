@@ -17,10 +17,5 @@ compatibility_date = "2024-03-20"
 binding = "IMAGE_BUCKET"
 bucket_name = "foodgrind-image-storage"
 
-# Add this block to bind a KV namespace
-[[kv_namespaces]]
-binding = "TEXT_CACHE"
-id = "9f7892da1d90486196e588cff983712f"
-
 [observability.logs]
 enabled = true

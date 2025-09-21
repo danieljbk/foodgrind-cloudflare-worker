@@ -3,7 +3,6 @@
 import { base64ToArrayBuffer } from "../utils/buffer.js";
 import { BaseHandler } from "../shared/baseHandler.js";
 import { generateWithAwsBedrock } from "../shared/awsBedrock.js";
-import { createSuccessResponse } from "../shared/response.js";
 
 /**
  * Image handler class for image generation requests
@@ -39,7 +38,6 @@ export async function handleImageGeneration(key, env) {
   return await imageHandler.handleRequest(
     key,
     env,
-    'R2', // cacheType
     () => imageHandler.generateImage(key, env),
     "image/png"
   );
